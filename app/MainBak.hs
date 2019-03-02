@@ -89,14 +89,14 @@ getOrCreateSession env sid = do
       -- Put Session into the enviroment
       insert env (UUID.toString uuid) newSession
       return newSession
-        
+
 kash :: Environment -> ServerPart Response
-kash env = do 
+kash env = do
   let newSession = do
         s@(KashSession c ts) <- liftIO $ createSession env
         addCookie Session c
         return s
-  decodeBody kashPolicy 
+  decodeBody kashPolicy
   msid <- optional $ lookCookieValue sidName
   ks@(KashSession c ts) <- case msid of
     (Just sid) -> do
@@ -110,36 +110,36 @@ kash env = do
          dir "terminalPush" $ terminalPushResponse ts,
          dir "static" $ static,
          homePage]
-       
+
 -- | Serves static files like JavaScript and StyleSheet files.
 static :: ServerPart Response
 static = serveDirectory EnableBrowsing [] "static"
 
--- | Main template that includes all necessary static files tags and other base 
+-- | Main template that includes all necessary static files tags and other base
 -- stuff that appears on every page
 template :: Text -> Html -> Response
-template title body = 
-  toResponse $ H.docTypeHtml ! A.lang "en" ! 
+template title body =
+  toResponse $ H.docTypeHtml ! A.lang "en" !
       A.xmlns "http://www.w3.org/1999/xhtml" $ do
     H.head $ do
-      let cssTag href = H.link ! A.rel "stylesheet" ! A.media "all" ! 
+      let cssTag href = H.link ! A.rel "stylesheet" ! A.media "all" !
                         A.type_ "text/css" ! A.href href
       let jsTag src = H.script ! A.type_ "text/javascript" ! A.src src $ ""
       H.title $ toHtml title
       cssTag "static/jquery/jquery-ui.min.css"
       cssTag "static/bootstrap/css/bootstrap.min.css"
       cssTag "static/kash.css"
-      jsTag "static/jquery/jquery-1.9.1.min.js"  
+      jsTag "static/jquery/jquery-1.9.1.min.js"
       jsTag "static/jquery/jquery-ui.min.js"
       jsTag "static/bootstrap/js/bootstrap.min.js"
       jsTag "static/kash.js"
     H.body body
-    
+
 processOutput content = return $ toResponse content
 
 -- could use the below one for current one but, below one will include parsing
 emptyResponse :: ServerPart Response
-emptyResponse = responseFromOutput "" 
+emptyResponse = responseFromOutput ""
 
 responseFromOutput :: B.ByteString -> ServerPart Response
 responseFromOutput str = return $ toResponse str
@@ -150,7 +150,7 @@ strToResponse = toResponse
 getTerminalOutput :: Int -> Terminal -> IO B.ByteString
 getTerminalOutput att t = do
   output <- tGetStr t
-  case output of 
+  case output of
     (Just c) -> return $ tToHtml c
     Nothing -> do
       if att <= 0 then do
@@ -164,7 +164,7 @@ terminalPullResponse = terminalApplyResponse (\t _ ->
                                                getTerminalOutput 15 t)
 
 terminalPushResponse :: Terminals -> ServerPart Response
-terminalPushResponse ts = do                  
+terminalPushResponse ts = do
   posted <- lookText "streamPush"
   terminalApplyResponse (\t _ -> do
                             case decode $ LT.unpack posted of
@@ -173,8 +173,8 @@ terminalPushResponse ts = do
                                 getTerminalOutput 0 t
                               Nothing -> return ""
                             ) ts
-    
-terminalApplyResponse :: (Terminal -> String -> IO B.ByteString) -> 
+
+terminalApplyResponse :: (Terminal -> String -> IO B.ByteString) ->
                          Terminals -> ServerPart Response
 terminalApplyResponse f ts = do
   mtid <- optional $ lookText "tid"
@@ -183,10 +183,10 @@ terminalApplyResponse f ts = do
       let stid = LT.unpack tid
       mt <- liftIO $ getTerminal ts stid
       case mt of
-        (Just t) -> do 
+        (Just t) -> do
           output <- liftIO $ f t stid
           responseFromOutput output
-        Nothing -> notFound $ strToResponse $ 
+        Nothing -> notFound $ strToResponse $
                    "Terminal with tid: \""++stid++"\" not found."
     Nothing -> badRequest $ strToResponse "Terminal id is required."
 
@@ -199,7 +199,7 @@ terminalView ts = msum [getComm, postComm] where
   postComm = do method POST
                 action <- lookText "action"
                 case action of
-                  "create" -> do 
+                  "create" -> do
                     t <- liftIO $ createTerminal "/bin/login" [] ts
                     tid <- liftIO $ tGetId t
                     responseFromOutput $ B8.pack $ show $ tid
@@ -215,4 +215,3 @@ homePage =
       H.h1 "добрый день!"
       H.p "Here is a semi-functional server terminal."
       H.p $ a ! A.class_ "btn btn-large" ! A.target "_blank" ! href "/terminal" $ "Terminal"
-      
