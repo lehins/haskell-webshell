@@ -12,6 +12,11 @@ function initWesh() {
   new_uri += "//" + loc.host + "/terminal/" + terminal.dataset.token;
   const ws = new WebSocket(new_uri);
   const t = new hterm.Terminal("light");
+  t.prefs_.set('cursor-blink', true);
+  t.prefs_.set('cursor-blink-cycle', [500, 500]);
+  t.prefs_.set('enable-dec12', true);
+
+  window.wesh = t;
   var connected = false;
 
   t.onTerminalReady = function() {

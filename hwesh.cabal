@@ -26,7 +26,6 @@ library
                      , Wesh.Storage
   other-modules:
   build-depends:       base            >= 4.8 && < 5
-                     , base64-bytestring
                      , attoparsec
                      , aeson
                      , bytestring

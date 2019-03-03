@@ -9,6 +9,7 @@ import Conduit
 import Control.Monad.Reader (withReaderT)
 import Network.WebSockets
 import RIO
+import RIO.ByteString as B
 import RIO.Process
 import Yesod (MonadHandler)
 import qualified Yesod.WebSockets as WS
@@ -42,7 +43,8 @@ communicate token = do
     withTerminal token cmd args $ \Terminal {tInputSink, tOutputSource} ->
       let terminalOutput = tOutputSource .| debugConduit "Output" .| sinkWSText
           terminalInput = sourceWSText .| debugConduit "Input" .| tInputSink
-          runCommunication =
+          runCommunication = do
+            runConduit (yield "\ESC[?25h" .| sinkWSText) -- turn on cursor
             race_ (runConduit terminalOutput) (runConduit terminalInput)
        in catch runCommunication $ \case
             exc@CloseRequest {} ->
@@ -54,10 +56,10 @@ communicate token = do
     Right (Right exitCode) -> logDebug $ "Exited with: " <> displayShow exitCode
     Right _ -> pure ()
   where
-    -- cmd = "/usr/bin/docker"
-    -- args = ["run", "--rm", "-ith", "wesh", "lehins/lehins", "bash"]
     cmd = "/bin/bash"
     args = []
+    -- cmd = "/usr/bin/docker"
+    -- args = ["run", "--rm", "-ith", "wesh", "lehins/lehins", "bash"]
 
 
 debugConduit ::
