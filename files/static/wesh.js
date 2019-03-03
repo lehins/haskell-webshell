@@ -42,9 +42,11 @@ function initWesh() {
         contentType: "application/json; charset=utf-8",
         dataType: "json",
         success: function(data){
+          console.log("Succeeded in resizing the terminal.");
           console.log(data);
         },
         failure: function(data){
+          console.log("Failed to resize the terminal.");
           console.log(data);
         }
       });

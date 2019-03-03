@@ -1,9 +1,11 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Wesh.Terminal
   ( Terminal(..)
   , withTerminal
+  , resizeTerminal
   ) where
 
 import Conduit
@@ -11,55 +13,77 @@ import Control.Monad.Reader
 import Foreign.C.Error
 import Foreign.C.Types
 import RIO
+import RIO.Map as Map
 import RIO.Process
 import System.Posix.IO hiding (createPipe)
 import System.Posix.Terminal
-import System.Posix.Types (Fd)
 
 import Wesh.Types
 
 foreign import ccall "resize" c_resize :: CInt -> CUShort -> CUShort -> IO CInt
 
 withTerminal ::
-     (MonadUnliftIO m, MonadReader env m, HasLogFunc env, HasProcessContext env)
-  => Text
+     Token
   -> FilePath
   -> [String]
-  -> (Terminal -> m a)
-  -> m (Either a ExitCode)
+  -> (Terminal -> RIO WeshSession a)
+  -> RIO WeshSession (Either a ExitCode)
 withTerminal token cmd args onTerminal =
-  withPseudoTerminal token $ \masterHdl slaveHdl fdRef ->
+  withPseudoTerminal token $ \terminal@Terminal {tHandle} ->
     proc cmd args $ \processConfig -> do
       let customProcessConfig =
             setCreateGroup True $
             setNewSession True $
-            setStdin (useHandleClose slaveHdl) $
-            setStdout (useHandleClose slaveHdl) $
-            setStderr (useHandleClose slaveHdl) processConfig
+            setStdin (useHandleClose tHandle) $
+            setStdout (useHandleClose tHandle) $
+            setStderr (useHandleClose tHandle) processConfig
+      logInfo "Starting new terminal"
       withProcess customProcessConfig $ \process ->
-        race
-          (onTerminal (Terminal (sinkHandle masterHdl) (sourceHandle masterHdl) fdRef))
-          (waitExitCode process)
+        race (onTerminal terminal) (waitExitCode process)
 
-withPseudoTerminal ::
-     MonadUnliftIO m => Text -> (Handle -> Handle -> IORef (Maybe Fd) -> m c) -> m c
-withPseudoTerminal token f = bracket openPseudoTerminalHandles closeHandles useHandles
-  where
-    openPseudoTerminalHandles =
-      liftIO $ do
-        (masterFd, slaveFd) <- openPseudoTerminal
-        masterHdl <- fdToHandle masterFd
-        slaveHdl <- fdToHandle slaveFd
+withPseudoTerminal :: Token -> (Terminal -> RIO WeshSession c) -> RIO WeshSession c
+withPseudoTerminal token f = do
+  weshEnv <- asks weshSessionEnv
+  let openPseudoTerminalHandles = do
+        (masterFd, slaveFd) <- liftIO openPseudoTerminal
+        masterHdl <- liftIO $ fdToHandle masterFd
+        slaveHdl <- liftIO $ fdToHandle slaveFd
+        let terminal =
+              Terminal
+                { tInputSink = sinkHandle masterHdl
+                , tOutputSource = sourceHandle masterHdl
+                , tHandle = slaveHdl
+                , tFd = slaveFd
+                }
+        atomicModifyIORef' (weshEnvState weshEnv) $ \state ->
+          (Map.insert token terminal state, ())
+        pure (masterHdl, terminal)
+      closeHandles (masterHdl, Terminal {tHandle}) = do
+        atomicModifyIORef' (weshEnvState weshEnv) $ \state ->
+          (Map.delete token state, ())
+        liftIO $ hClose masterHdl >> hClose tHandle
+      useHandles (_, terminal) = do
+        -- void $
+        --   liftIO $
+        --   throwErrnoIfMinus1 "Could not resize the terminal" $
+        --   c_resize (fromIntegral (tFd terminal)) 100 200
+        f terminal
+  bracket openPseudoTerminalHandles closeHandles useHandles
+
+resizeTerminal :: Token -> TerminalSize -> RIO WeshEnv Bool
+resizeTerminal token tSize@TerminalSize {tsWidth, tsHeight} = do
+  stateRef <- asks weshEnvState
+  state <- readIORef stateRef
+  -- TODO: implement lenient resising with error logging
+  case Map.lookup token state of
+    Just Terminal{tFd} -> do
         void $
+          liftIO $
           throwErrnoIfMinus1 "Could not resize the terminal" $
-          c_resize (fromIntegral slaveFd) 100 200
-        fdRef <- newIORef $ Just slaveFd
-        pure (masterHdl, slaveHdl, fdRef)
-    closeHandles (masterHdl, slaveHdl, fdRef) =
-      liftIO $ writeIORef fdRef Nothing >> hClose masterHdl >> hClose slaveHdl
-    useHandles (masterHdl, slaveHdl, fdRef) = f masterHdl slaveHdl fdRef
-
---resizeTerminal
+          c_resize (fromIntegral tFd) (fromIntegral tsWidth) (fromIntegral tsHeight)
+        logDebug $ "Changed the size of the terminal to: " <> display tSize
+        pure True
+    Nothing -> pure False
 
 getErrnoTxt :: MonadIO m => m Utf8Builder
 getErrnoTxt = toTextErrno <$> liftIO getErrno

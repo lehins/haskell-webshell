@@ -16,6 +16,7 @@ import Database.Persist.Sql (SqlBackend, runSqlPool)
 import RIO hiding (Handler)
 import RIO.Text as T
 import Wesh.Connect
+import Wesh.Terminal (resizeTerminal)
 import Wesh.Types
 import Yesod
 import Yesod.Static
@@ -42,8 +43,8 @@ staticFiles "files/static/"
 mkYesod "App" [parseRoutes|
 / HomeR GET
 /static StaticR Static appStatic
-/terminal/#Text TerminalR GET
-/resize/#Text ResizeTerminalR POST
+/terminal/#Token TerminalR GET
+/resize/#Token ResizeTerminalR POST
 |]
 
 getHomeR :: HandlerFor App Html
@@ -61,33 +62,27 @@ getHomeR = do
     addScript $ StaticR wesh_js
     [whamlet|<div id="terminal" data-token="#{token}">|]
 
-getTerminalR :: Text -> HandlerFor App ()
+getTerminalR :: Token -> HandlerFor App ()
 getTerminalR token = do
   App {appWeshEnv} <- getYesod
   attemptCommunication token appWeshEnv
 
 
-data WindowSize = WindowSize
-  { wsWidth :: !Int
-  , wsHeight :: !Int
-  } deriving Show
-
-instance FromJSON WindowSize where
-  parseJSON =
-    withObject "WindowSize" $ \o -> do
-      wsWidth <- o .: "width"
-      wsHeight <- o .: "height"
-      pure WindowSize {wsWidth, wsHeight}
-
-postResizeTerminalR :: Text -> HandlerFor App Value
+postResizeTerminalR :: Token -> HandlerFor App Value
 postResizeTerminalR token = do
   App {appWeshEnv} <- getYesod
   parseJsonBody >>= \case
-    A.Error err -> sendStatusJSON badRequest400 $ makeError ("JSON Parse Error: " <> T.pack err)
-    A.Success val -> do
-      runRIO appWeshEnv $ RIO.logInfo $ displayShow (val :: WindowSize)
-      pure $ object ["success" .= True]
-  -- attemptCommunication token appWeshEnv
+    A.Error err ->
+      sendStatusJSON badRequest400 $
+      makeError ("JSON Parse Error: " <> T.pack err)
+    A.Success termSize -> do
+      hasResized <-
+        runRIO appWeshEnv $ do
+          RIO.logInfo $ "Attempt to resize: " <> display termSize
+          resizeTerminal token termSize
+      if hasResized
+        then pure $ object ["success" .= True]
+        else pure $ makeError "Failed to resize the terminal"
 
 
 -- postAuthenticateR :: Handler App Value

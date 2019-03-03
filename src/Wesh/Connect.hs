@@ -17,7 +17,7 @@ import Wesh.Parser
 import Wesh.Terminal
 import Wesh.Types
 
-attemptCommunication :: (MonadHandler m, MonadUnliftIO m) => Text -> WeshEnv -> m ()
+attemptCommunication :: (MonadHandler m, MonadUnliftIO m) => Token -> WeshEnv -> m ()
 attemptCommunication token weshEnv = do
   weshEnvProcessContext <- mkDefaultProcessContext
   WS.webSockets $
@@ -35,7 +35,7 @@ sourceWSText = transPipe fromWebSocketsT WS.sourceWS
 sinkWSText :: ConduitT ByteString o (RIO WeshSession) ()
 sinkWSText = transPipe fromWebSocketsT WS.sinkWSText
 
-communicate :: Text -> RIO WeshSession ()
+communicate :: Token -> RIO WeshSession ()
 communicate token = do
   eExitCode <-
     tryAny $
@@ -54,10 +54,10 @@ communicate token = do
     Right (Right exitCode) -> logDebug $ "Exited with: " <> displayShow exitCode
     Right _ -> pure ()
   where
-    cmd = "/usr/bin/docker"
-    args = ["run", "--rm", "-ith", "wesh", "lehins/lehins", "bash"]
-    -- cmd = "/bin/bash"
-    -- args = []
+    -- cmd = "/usr/bin/docker"
+    -- args = ["run", "--rm", "-ith", "wesh", "lehins/lehins", "bash"]
+    cmd = "/bin/bash"
+    args = []
 
 
 debugConduit ::
