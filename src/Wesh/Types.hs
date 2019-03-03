@@ -1,22 +1,45 @@
+{-# LANGUAGE RankNTypes #-}
 module Wesh.Types where
 
-import RIO
 import Network.WebSockets.Connection
+import Data.Conduit
+import RIO
+import RIO.Process
+import System.Posix.Types (Fd)
 
-type WeshState = IORef ()
+type WeshState = IORef (Map ByteString Terminal)
+
+data Terminal = Terminal
+  { tInputSink  :: !(forall o m . MonadIO m => ConduitT ByteString o m ())
+  , tOutputSource :: !(forall i m . MonadIO m => ConduitT i ByteString m ())
+  , tFd :: !(IORef (Maybe Fd))
+  }
 
 data WeshEnv = WeshEnv
-  { weshEnvState :: !WeshState
-  , weshLogFunc :: !LogFunc
-  , weshEnvConn :: !Connection
+  { weshEnvState   :: !WeshState
+  , weshEnvLogFunc :: !LogFunc
+  }
+
+data WeshSession = WeshSession
+  { weshSessionEnv            :: !WeshEnv
+  , weshSessionProcessContext :: !ProcessContext
+  , weshSessionConnection     :: !Connection
   }
 
 class HasConnection env where
-  connectionL :: Lens' env Connection
+  connectionG :: SimpleGetter env Connection
 
-instance HasConnection WeshEnv where
-  connectionL = lens weshEnvConn (\c f -> c {weshEnvConn = f})
+instance HasConnection WeshSession where
+  connectionG = to weshSessionConnection
 
 instance HasLogFunc WeshEnv where
-  logFuncL = lens weshLogFunc (\c f -> c {weshLogFunc = f})
+  logFuncL = lens weshEnvLogFunc (\c f -> c {weshEnvLogFunc = f})
 
+instance HasProcessContext WeshSession where
+  processContextL = lens weshSessionProcessContext (\c f -> c {weshSessionProcessContext = f})
+
+instance HasLogFunc WeshSession where
+  logFuncL =
+    lens
+    (\c -> weshSessionEnv c ^. logFuncL)
+    (\c lf -> c {weshSessionEnv = set logFuncL lf (weshSessionEnv c)})

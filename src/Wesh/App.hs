@@ -1,23 +1,30 @@
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ViewPatterns #-}
 module Wesh.App where
 
+import Data.Aeson as A
+import Crypto.Random
+import Data.ByteString.Builder
 import Data.Pool (Pool)
 import Database.Persist.Sql (SqlBackend, runSqlPool)
 import RIO hiding (Handler)
+import RIO.Text as T
+import Wesh.Connect
+import Wesh.Types
 import Yesod
 import Yesod.Static
-import Wesh.Types
-import Wesh.Connect
+import Network.HTTP.Types.Status (badRequest400)
 
 data App = App
   { appSqlBackendPool :: !(Pool SqlBackend)
-  , appStatic :: !Static
-  , appWeshState :: !WeshState
-  , appLogFunc :: !LogFunc
+  , appStatic         :: !Static
+  , appWeshEnv        :: !WeshEnv
   }
 
 instance Yesod App where
@@ -35,30 +42,59 @@ staticFiles "files/static/"
 mkYesod "App" [parseRoutes|
 / HomeR GET
 /static StaticR Static appStatic
+/terminal/#Text TerminalR GET
+/resize/#Text ResizeTerminalR POST
 |]
-
 
 getHomeR :: HandlerFor App Html
 getHomeR = do
-  app <- getYesod
-  webSockets (WeshEnv (appWeshState app) (appLogFunc app)) communicate
+  randomBS <- liftIO $ getRandomBytes 32
+  let token = textDisplay $ Utf8Builder $ byteStringHex randomBS
+  -- TODO: Map.lookup token (weshEnvState appWeshEnv)
   defaultLayout $ do
     setTitle "Haskell Web Shell - hwesh"
     addStylesheet $ StaticR wesh_css
-    -- addStylesheetRemote "https://cdnjs.cloudflare.com/ajax/libs/jquery.terminal/2.2.0/css/jquery.terminal.min.css"
-    -- addScriptRemote "https://unpkg.com/js-polyfills/keyboard.js"
-    -- addScriptRemote "https://cdn.terminal.jcubic.pl/wcwidth.js"
-    -- addScriptRemote "https://code.jquery.com/jquery-3.3.1.min.js"
-    -- addScriptRemote "https://code.jquery.com/ui/1.12.1/jquery-ui.min.js"
-    -- addScriptRemote "https://cdnjs.cloudflare.com/ajax/libs/jquery.terminal/2.2.0/js/jquery.terminal.min.js"
-    --addScriptRemote "https://raw.githubusercontent.com/atdt/escapes.js/master/escapes.js"
-    -- addScript $ StaticR escapes_js
+    addScriptRemote "https://code.jquery.com/jquery-3.3.1.min.js"
+    -- `hterm` created by google, built locally and served as a static file. Source:
+    -- https://chromium.googlesource.com/apps/libapps/+/master/hterm
     addScript $ StaticR hterm_all_js
     addScript $ StaticR wesh_js
-    -- toWidget
-    --   [julius|
-    --          wesh();
-    --   |]
-    [whamlet|
-            <div id="terminal">
-    |]
+    [whamlet|<div id="terminal" data-token="#{token}">|]
+
+getTerminalR :: Text -> HandlerFor App ()
+getTerminalR token = do
+  App {appWeshEnv} <- getYesod
+  attemptCommunication token appWeshEnv
+
+
+data WindowSize = WindowSize
+  { wsWidth :: !Int
+  , wsHeight :: !Int
+  } deriving Show
+
+instance FromJSON WindowSize where
+  parseJSON =
+    withObject "WindowSize" $ \o -> do
+      wsWidth <- o .: "width"
+      wsHeight <- o .: "height"
+      pure WindowSize {wsWidth, wsHeight}
+
+postResizeTerminalR :: Text -> HandlerFor App Value
+postResizeTerminalR token = do
+  App {appWeshEnv} <- getYesod
+  parseJsonBody >>= \case
+    A.Error err -> sendStatusJSON badRequest400 $ makeError ("JSON Parse Error: " <> T.pack err)
+    A.Success val -> do
+      runRIO appWeshEnv $ RIO.logInfo $ displayShow (val :: WindowSize)
+      pure $ object ["success" .= True]
+  -- attemptCommunication token appWeshEnv
+
+
+-- postAuthenticateR :: Handler App Value
+-- postAuthenticateR = do
+--   parseJsonBody >>= \case
+--     A.Error err -> sendStatusJSON badRequest400 $ makeError ("JSON Parse Error: " <> T.pack err)
+--     A.Success s -> do
+
+makeError :: Text -> Value
+makeError txt = object ["error" .= txt]

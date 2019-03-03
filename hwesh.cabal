@@ -12,6 +12,8 @@ category:            Algorithms
 build-type:          Simple
 extra-source-files:  README.md
                    , CHANGELOG.md
+                   , cbits/resize.h
+                   , cbits/resize.c
 cabal-version:       >=1.10
 
 library
@@ -21,16 +23,22 @@ library
                      , Wesh.Parser
                      , Wesh.Types
                      , Wesh.Terminal
+                     , Wesh.Storage
   other-modules:
   build-depends:       base            >= 4.8 && < 5
+                     , base64-bytestring
                      , attoparsec
+                     , aeson
                      , bytestring
                      , conduit
+                     , cryptonite
                      , mtl
                      , resource-pool
                      , persistent
                      , persistent-sqlite
+                     , persistent-template
                      , rio
+                     , http-types
                      , unix
                      , websockets
                      , yesod
@@ -44,6 +52,9 @@ library
                        -Wincomplete-record-updates
                        -Wincomplete-uni-patterns
                        -Wredundant-constraints
+  include-dirs:        cbits
+  c-sources:           cbits/resize.c
+  cc-options:          -Wall -Wextra -pedantic -std=c99
 
 
 executable wesh
