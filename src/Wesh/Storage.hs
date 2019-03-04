@@ -10,7 +10,7 @@
 {-# LANGUAGE TypeFamilies               #-}
 module Wesh.Storage where
 
-import           Database.Persist
+--import           Database.Persist
 import           Database.Persist.TH
 import           RIO
 

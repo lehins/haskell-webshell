@@ -1,7 +1,5 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TypeFamilies #-}
 module Wesh.Connect where
 
@@ -9,7 +7,6 @@ import Conduit
 import Control.Monad.Reader (withReaderT)
 import Network.WebSockets
 import RIO
-import RIO.ByteString as B
 import RIO.Process
 import Yesod (MonadHandler)
 import qualified Yesod.WebSockets as WS

@@ -1,8 +1,8 @@
 name:                hwesh
 version:             0.1.0.0
 synopsis:            Short description
-description:         Please see the README on GitHub at <https://github.com/lehins/hwesh#readme>
-homepage:            https://github.com/lehins/massiv
+description:         Please see the README on GitHub at <https://github.com/lehins/haskell-webshell#readme>
+homepage:            https://github.com/lehins/haskell-webshell
 license:             BSD3
 license-file:        LICENSE
 author:              Alexey Kuleshevich
@@ -47,6 +47,8 @@ library
 
   default-language:    Haskell2010
   extensions:          NoImplicitPrelude
+                     , OverloadedStrings
+                     , NamedFieldPuns
   ghc-options:         -Wall
                        -Wincomplete-record-updates
                        -Wincomplete-uni-patterns
@@ -98,4 +100,4 @@ test-suite tests
 
 source-repository head
   type:     git
-  location: https://github.com/lehins/hwesh
+  location: https://github.com/lehins/haskell-webshell

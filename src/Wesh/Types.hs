@@ -1,6 +1,4 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 module Wesh.Types where
 
@@ -11,7 +9,6 @@ import RIO
 import RIO.Process
 import System.Posix.Types (Fd)
 import Yesod (PathPiece)
-import Foreign.C.Types
 
 newtype Token = Token Text deriving (Eq, Ord, Show, Read, PathPiece)
 
@@ -59,6 +56,15 @@ class HasConnection env where
 
 instance HasConnection WeshSession where
   connectionG = to weshSessionConnection
+
+class HasWeshState env where
+  weshStateG :: SimpleGetter env WeshState
+
+instance HasWeshState WeshEnv where
+  weshStateG = to weshEnvState
+
+instance HasWeshState WeshSession where
+  weshStateG = to (weshEnvState . weshSessionEnv)
 
 instance HasLogFunc WeshEnv where
   logFuncL = lens weshEnvLogFunc (\c f -> c {weshEnvLogFunc = f})
