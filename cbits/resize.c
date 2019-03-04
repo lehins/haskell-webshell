@@ -1,5 +1,5 @@
 #include <sys/ioctl.h>
-
+#include <string.h>
 #include "resize.h"
 
 int resize(int fd, unsigned short x, unsigned short y){
