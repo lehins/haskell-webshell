@@ -15,6 +15,7 @@ function initWesh() {
   t.prefs_.set('cursor-blink', true);
   t.prefs_.set('cursor-blink-cycle', [500, 500]);
   t.prefs_.set('enable-dec12', true);
+  t.prefs_.set('copy-on-select', false);
 
   window.wesh = t;
   var connected = false;
