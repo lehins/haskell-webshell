@@ -55,8 +55,6 @@ communicate token = do
   where
     cmd = "/bin/bash"
     args = []
-    -- cmd = "/usr/bin/docker"
-    -- args = ["run", "--rm", "-ith", "wesh", "lehins/lehins", "bash"]
 
 
 debugConduit ::

@@ -49,7 +49,6 @@ getHomeR :: HandlerFor App Html
 getHomeR = do
   randomBS <- liftIO $ getRandomBytes 32
   let token = textDisplay $ Utf8Builder $ byteStringHex randomBS
-  -- TODO: Map.lookup token (weshEnvState appWeshEnv)
   defaultLayout $ do
     setTitle "Haskell Web Shell - hwesh"
     addStylesheet $ StaticR wesh_css

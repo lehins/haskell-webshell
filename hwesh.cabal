@@ -14,6 +14,10 @@ extra-source-files:  README.md
                    , CHANGELOG.md
                    , cbits/resize.h
                    , cbits/resize.c
+                   , files/static/hterm_all.js
+                   , files/static/wesh.js
+                   , files/static/wesh.css
+                   , files/vimtest.txt
 cabal-version:       >=1.10
 
 library
@@ -63,6 +67,7 @@ executable wesh
   main-is:        Main.hs
   ghc-options:    -Wall -rtsopts -threaded "-with-rtsopts=-N"
   build-depends: base
+               , optparse-applicative
                , persistent-sqlite
                , rio
                , rio-orphans
