@@ -5,7 +5,7 @@ module Wesh.Connect where
 
 import Conduit
 import Control.Monad.Reader (withReaderT)
-import Network.WebSockets
+import Network.WebSockets (ConnectionException(CloseRequest))
 import RIO
 import RIO.Process
 import Yesod (MonadHandler)
@@ -18,10 +18,8 @@ import Wesh.Types
 attemptCommunication :: (MonadHandler m, MonadUnliftIO m) => Token -> WeshEnv -> m ()
 attemptCommunication token weshEnv = do
   weshEnvProcessContext <- mkDefaultProcessContext
-  WS.webSockets $
-    withReaderT
-      (WeshSession weshEnv weshEnvProcessContext)
-      (liftRIO (communicate token))
+  let session = WeshSession weshEnv weshEnvProcessContext
+  WS.webSockets $ withReaderT session (liftRIO (communicate token))
 
 -- | Generalize the environment from @ReaderT Connection@ to @RIO env@
 fromWebSocketsT :: HasConnection env => WS.WebSocketsT IO a -> RIO env a
@@ -37,9 +35,9 @@ communicate :: Token -> RIO WeshSession ()
 communicate token = do
   eExitCode <-
     tryAny $
-    withTerminal token cmd args $ \Terminal {tInputSink, tOutputSource} ->
-      let terminalOutput = tOutputSource .| debugConduit "Output" .| sinkWSText
-          terminalInput = sourceWSText .| debugConduit "Input" .| tInputSink
+    withShell token cmd args $ \ t ->
+      let terminalOutput = terminalOutputSource t .| debugConduit "Output" .| sinkWSText
+          terminalInput = sourceWSText .| debugConduit "Input" .| terminalInputSink t
           runCommunication = do
             runConduit (yield "\ESC[?25h" .| sinkWSText) -- turn on cursor
             race_ (runConduit terminalOutput) (runConduit terminalInput)
@@ -59,12 +57,10 @@ communicate token = do
 
 debugConduit ::
      (MonadIO m, MonadReader env m, HasLogFunc env)
-  => Utf8Builder
-  -> ConduitT ByteString ByteString m ()
+  => Utf8Builder -> ConduitT ByteString ByteString m ()
 debugConduit channel = iterMC logChars
-  where
-    logChars bs =
-      case tParse bs of
-        Left err ->
-          logWarn $ "Couldn't parse the control sequence: " <> fromString err
-        Right ctlSeq -> logDebug $ channel <> ": " <> displayShow ctlSeq
+  where logChars bs =
+          case tParse bs of
+            Left err ->
+              logWarn $ "Couldn't parse the control sequence: " <> fromString err
+            Right ctlSeq -> logDebug $ channel <> ": " <> displayShow ctlSeq

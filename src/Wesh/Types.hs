@@ -1,9 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RankNTypes #-}
 module Wesh.Types where
 
 import Data.Aeson
-import Data.Conduit
 import Network.WebSockets.Connection
 import RIO
 import RIO.Process
@@ -15,9 +13,8 @@ newtype Token = Token Text deriving (Eq, Ord, Show, Read, PathPiece)
 type WeshState = IORef (Map Token Terminal)
 
 data Terminal = Terminal
-  { tInputSink    :: !(forall o m . MonadIO m => ConduitT ByteString o m ())
-  , tOutputSource :: !(forall i m . MonadIO m => ConduitT i ByteString m ())
-  , tHandle       :: !Handle
+  { tMasterHandle :: !Handle
+  , tSlaveHandle  :: !Handle
   , tFd           :: !Fd
   }
 

@@ -26,9 +26,7 @@ data App = App
   , appWeshEnv        :: !WeshEnv
   }
 
-instance Yesod App where
-  makeSessionBackend _ = return Nothing
-  shouldLogIO _ _ _ = return True
+instance Yesod App
 
 instance YesodPersist App where
   type YesodPersistBackend App = SqlBackend
@@ -64,7 +62,6 @@ getTerminalR token = do
   App {appWeshEnv} <- getYesod
   attemptCommunication token appWeshEnv
 
-
 postResizeTerminalR :: Token -> HandlerFor App Value
 postResizeTerminalR token = do
   App {appWeshEnv} <- getYesod
@@ -80,13 +77,6 @@ postResizeTerminalR token = do
       if hasResized
         then pure $ object ["success" .= True]
         else pure $ makeError "Failed to resize the terminal"
-
-
--- postAuthenticateR :: Handler App Value
--- postAuthenticateR = do
---   parseJsonBody >>= \case
---     A.Error err -> sendStatusJSON badRequest400 $ makeError ("JSON Parse Error: " <> T.pack err)
---     A.Success s -> do
 
 makeError :: Text -> Value
 makeError txt = object ["error" .= txt]

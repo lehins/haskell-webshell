@@ -2,11 +2,13 @@
 {-# LANGUAGE ForeignFunctionInterface #-}
 module Wesh.Terminal
   ( Terminal(..)
-  , withTerminal
+  , withShell
   , resizeTerminal
+  , terminalInputSink
+  , terminalOutputSource
   ) where
 
-import Conduit (sinkHandle, sourceHandle)
+import Conduit (ConduitT, sinkHandle, sourceHandle)
 import Control.Monad.Reader
 import Foreign.C.Error
 import Foreign.C.Types
@@ -20,55 +22,59 @@ import Wesh.Types
 
 foreign import ccall "resize" c_resize :: CInt -> CUShort -> CUShort -> IO CInt
 
-withTerminal ::
+withShell ::
      ( MonadReader env m
      , MonadUnliftIO m
      , HasLogFunc env
      , HasProcessContext env
      , HasWeshState env
      )
-  => Token
-  -> FilePath
-  -> [String]
-  -> (Terminal -> m a)
+  => Token -- ^ Opaque identifier for the terminal session
+  -> FilePath -- ^ Name of shell
+  -> [String] -- ^ Shell arguments
+  -> (Terminal -> m a) -- ^ Action to execute on the terminal that runs the shell
   -> m (Either a ExitCode)
-withTerminal token cmd args onTerminal =
-  withPseudoTerminal token $ \terminal@Terminal {tHandle} ->
-    proc cmd args $ \processConfig -> do
+withShell token cmd args onTerminal =
+  withPseudoTerminal token $ \terminal@Terminal {tSlaveHandle} ->
+    proc cmd args $ \processConfig ->
       let customProcessConfig =
             setCreateGroup True $
             setNewSession True $
-            setStdin (useHandleClose tHandle) $
-            setStdout (useHandleClose tHandle) $
-            setStderr (useHandleClose tHandle) processConfig
-      withProcess customProcessConfig $ \process ->
-        race (onTerminal terminal) (waitExitCode process)
+            setStdin (useHandleClose tSlaveHandle) $
+            setStdout (useHandleClose tSlaveHandle) $
+            setStderr (useHandleClose tSlaveHandle) processConfig
+       in withProcess customProcessConfig $ \process ->
+            race (onTerminal terminal) (waitExitCode process)
+
+terminalInputSink :: MonadIO m => Terminal -> ConduitT ByteString o m ()
+terminalInputSink = sinkHandle . tMasterHandle
+
+terminalOutputSource :: MonadIO m => Terminal -> ConduitT i ByteString m ()
+terminalOutputSource = sourceHandle . tMasterHandle
 
 withPseudoTerminal ::
      (MonadReader env m, MonadUnliftIO m, HasWeshState env)
   => Token
   -> (Terminal -> m b)
   -> m b
-withPseudoTerminal token f = do
+withPseudoTerminal token onPseudoTerminal = do
   stateRef <- view weshStateG
   let openPseudoTerminalHandles = do
-        (masterFd, slaveFd) <- liftIO openPseudoTerminal
-        masterHdl <- liftIO $ fdToHandle masterFd
-        slaveHdl <- liftIO $ fdToHandle slaveFd
-        let terminal =
-              Terminal
-                { tInputSink = sinkHandle masterHdl
-                , tOutputSource = sourceHandle masterHdl
-                , tHandle = slaveHdl
-                , tFd = slaveFd
-                }
+        terminal <- liftIO makePseudoTerminal
         atomicModifyIORef' stateRef $ \state -> (Map.insert token terminal state, ())
-        pure (masterHdl, terminal)
-      closeHandles (masterHdl, Terminal {tHandle}) = do
+        pure terminal
+      closeHandles Terminal {tMasterHandle, tSlaveHandle} = do
         atomicModifyIORef' stateRef $ \state -> (Map.delete token state, ())
-        liftIO $ hClose masterHdl >> hClose tHandle
-  bracket openPseudoTerminalHandles closeHandles (f . snd)
+        liftIO $ hClose tMasterHandle >> hClose tSlaveHandle
+  bracket openPseudoTerminalHandles closeHandles onPseudoTerminal
 
+makePseudoTerminal :: IO Terminal
+makePseudoTerminal = do
+  (masterFd, slaveFd) <- openPseudoTerminal
+  masterHdl <- fdToHandle masterFd
+  slaveHdl <- fdToHandle slaveFd
+  pure $
+    Terminal {tMasterHandle = masterHdl, tSlaveHandle = slaveHdl, tFd = slaveFd}
 
 resizeTerminal ::
      (MonadReader env m, MonadIO m, HasWeshState env, HasLogFunc env)
@@ -80,15 +86,16 @@ resizeTerminal token tSize@TerminalSize {tsWidth, tsHeight} = do
   state <- readIORef stateRef
   case Map.lookup token state of
     Just Terminal{tFd} -> do
-        ictlResize (fromIntegral tFd) (fromIntegral tsWidth) (fromIntegral tsHeight)
+        ioctlResize (fromIntegral tFd) (fromIntegral tsWidth) (fromIntegral tsHeight)
         logDebug $ "Changed the size of the terminal to: " <> display tSize
         pure True
     Nothing -> pure False
 
 
 -- TODO: implement lenient resizing with proper error logging
-ictlResize :: MonadIO m => CInt -> CUShort -> CUShort -> m ()
-ictlResize fd width height =
+ioctlResize :: MonadIO m => CInt -> CUShort -> CUShort -> m ()
+ioctlResize fd width height =
   void $
   liftIO $
   throwErrnoIfMinus1 "Could not resize the terminal" $ c_resize fd width height
+
