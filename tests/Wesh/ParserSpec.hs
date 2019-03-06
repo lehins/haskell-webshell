@@ -1,8 +1,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module Hwesh.ParserSpec (spec) where
+module Wesh.ParserSpec (spec) where
 
-import Hwesh.Parser
+import Wesh.Parser
 import Common
 
 spec :: Spec
