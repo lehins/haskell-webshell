@@ -26,7 +26,8 @@ data App = App
   , appWeshEnv        :: !WeshEnv
   }
 
-instance Yesod App
+instance Yesod App where
+  makeSessionBackend _ = return Nothing
 
 instance YesodPersist App where
   type YesodPersistBackend App = SqlBackend
