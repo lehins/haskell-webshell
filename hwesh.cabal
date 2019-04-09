@@ -8,7 +8,7 @@ license-file:        LICENSE
 author:              Alexey Kuleshevich
 maintainer:          alexey@kuleshevi.ch
 copyright:           2019 Alexey Kuleshevich
-category:            Algorithms
+category:            Web, Shell, Terminal
 build-type:          Simple
 extra-source-files:  README.md
                    , CHANGELOG.md
